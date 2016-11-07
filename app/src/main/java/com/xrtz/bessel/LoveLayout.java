@@ -1,5 +1,7 @@
 package com.xrtz.bessel;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
@@ -10,6 +12,8 @@ import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 
@@ -48,6 +52,8 @@ public class LoveLayout extends RelativeLayout {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         mHeight = getMeasuredHeight();
         mWidth = getMeasuredWidth();
+        Log.e("onMeasure","mHeight="+mHeight);
+        Log.e("mWidth","mWidth="+mWidth);
     }
 
     public void init(){
@@ -62,22 +68,50 @@ public class LoveLayout extends RelativeLayout {
         params = new RelativeLayout.LayoutParams(drawWidth,drawHeight);
     }
 
+    /**
+     * 获取进入的动画
+     * @param imageView
+     * @param pointF
+     * @return
+     */
     private AnimatorSet getObjectAnimator(ImageView imageView,PointF pointF) {
-        ObjectAnimator scaleX = ObjectAnimator.ofFloat(imageView,"scaleX",0.2f,1.0f);
-        ObjectAnimator scaleY = ObjectAnimator.ofFloat(imageView,"scaleY",0.2f,1.0f);
-        ObjectAnimator alpha = ObjectAnimator.ofFloat(imageView,"alpha",0.2f,1.0f);
-        AnimatorSet animatorSet = new AnimatorSet();
-        animatorSet.playTogether(scaleX,scaleY,alpha);
-        animatorSet.setDuration(800);
+
+        AnimatorSet set = getEnterAnimtor(imageView);
 
         ValueAnimator beisaier = getValueAnimation(imageView,pointF);
-        AnimatorSet set = new AnimatorSet();
-        set.playSequentially(animatorSet,beisaier);
-        set.setDuration(3000);
-        set.setTarget(imageView);
-        return animatorSet;
+
+        AnimatorSet finalSet = new AnimatorSet();
+        finalSet.playSequentially(set);
+        finalSet.playSequentially(set, beisaier);
+        finalSet.setInterpolator(new LinearInterpolator());
+        finalSet.setTarget(imageView);
+        return finalSet;
+    }
+    /**
+     * 进入的动画
+     * @param target
+     * @return
+     */
+    private AnimatorSet getEnterAnimtor(final View target) {
+
+        ObjectAnimator alpha = ObjectAnimator.ofFloat(target, View.ALPHA, 0.2f, 1f);
+        ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, View.SCALE_X, 0.2f, 1f);
+        ObjectAnimator scaleY = ObjectAnimator.ofFloat(target, View.SCALE_Y, 0.2f, 1f);
+        AnimatorSet enter = new AnimatorSet();
+        enter.setDuration(500);
+        enter.setInterpolator(new LinearInterpolator());
+        enter.playTogether(alpha, scaleX, scaleY);
+        enter.setTarget(target);
+        return enter;
     }
 
+
+    /**
+     * 贝塞尔动画
+     * @param imageView
+     * @param pointF
+     * @return
+     */
     private ValueAnimator getValueAnimation(final ImageView imageView, PointF pointF) {
         PointF pointF0 = new PointF();
         pointF0.x = pointF.x - drawWidth/2;
@@ -95,15 +129,7 @@ public class LoveLayout extends RelativeLayout {
         LoveValueEvalutor loveValueEvalutor = new LoveValueEvalutor(pointF1,pointF2);
         ValueAnimator valueAnimator = ValueAnimator.ofObject(loveValueEvalutor,pointF0,pointF3);
         valueAnimator.setDuration(3000);
-        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                PointF pointF1 = (PointF) valueAnimator.getAnimatedValue();
-                imageView.setX(pointF1.x);
-                imageView.setY(pointF1.y);
-                imageView.setAlpha(1-valueAnimator.getAnimatedFraction());
-            }
-        });
+        valueAnimator.addUpdateListener(new BezierListenr(imageView));
         return valueAnimator;
     }
     private PointF getTogglePoint(int i,PointF pointF){
@@ -137,7 +163,42 @@ public class LoveLayout extends RelativeLayout {
         AnimatorSet objectAnimator = getObjectAnimator(imageView, pointF);
         imageView.setImageDrawable(drawables[random.nextInt(5)]);
         addView(imageView,params);
+        objectAnimator.addListener(new AnimEndListener(imageView));
         objectAnimator.start();
     }
+    /**
+     * 动画结束后，remove
+     */
+    private class AnimEndListener extends AnimatorListenerAdapter {
+        private View target;
 
+        public AnimEndListener(View target) {
+            this.target = target;
+        }
+
+        @Override
+        public void onAnimationEnd(Animator animation) {
+            super.onAnimationEnd(animation);
+            //因为不停的add 导致子view数量只增不减,所以在view动画结束后remove掉
+            removeView((target));
+        }
+    }
+    //今天贝塞尔曲线的变换
+    class BezierListenr implements ValueAnimator.AnimatorUpdateListener {
+
+        private View target;
+
+        public BezierListenr(View target) {
+            this.target = target;
+        }
+        @Override
+        public void onAnimationUpdate(ValueAnimator animation) {
+            //这里获取到贝塞尔曲线计算出来的的x y值 赋值给view 这样就能让爱心随着曲线走啦
+            PointF pointF = (PointF) animation.getAnimatedValue();
+            target.setX(pointF.x);
+            target.setY(pointF.y);
+            // 这里偷个懒,顺便做一个alpha动画,这样alpha渐变也完成啦
+            target.setAlpha(1-animation.getAnimatedFraction());
+        }
+    }
 }
